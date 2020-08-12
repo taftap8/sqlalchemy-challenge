@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
 
 from flask import Flask, jsonify
+from datetime import datetime
 
 #database setup
 engine = create_engine("sqlite:///Resources/hawaii.sqlite")
@@ -30,7 +31,11 @@ def home():
         f'Please see available routes:<br/>'
         f'/api/v1.0/precipitation <br/>'
         f'/api/v1.0/stations <br/>'
-        f'/api/v1.0/tobs <br/>'
+        f'/api/v1.0/tobs <br/><br/>'
+        f"Search for a specific start date (start/YYYY-MM-DD) <br/>"
+        f'/api/v1.0/date/start/<start> <br/>'
+        f"Serarch for a specific date range between a start/end date by entering (start/YYYY-MM-DD/end/YYYY-MM-DD)<br/>"
+        f'/api/v1.0/date/start/<start>/end/<end> <br/>'
     )
 
 @app.route("/api/v1.0/precipitation")
@@ -46,7 +51,7 @@ def percipitation():
     for date, prcp in prcp_results:
         precipitation_dict = {}
         precipitation_dict["date"] = date
-        precipitation_dict["prcp"] = prcp
+        precipitation_dict["precipitation"] = prcp
         all_precipitation.append(precipitation_dict)
     return jsonify(all_precipitation)
 
@@ -57,7 +62,11 @@ def stations():  #create session link from Python to the DB
     station_results = session.query(Station.station).all()
     session.close()
     #convert list into normal list
-    all_stations = list(np.ravel(station_results))
+    all_stations = []
+    for station in station_results:
+        station_dict = {}
+        station_dict["station name"] = station
+        all_stations.append(station_dict)
     return jsonify(all_stations)
 
 @app.route("/api/v1.0/tobs")
@@ -71,10 +80,77 @@ def tobs():
         func.avg(Measurement.tobs)}
 
     temp_results = session.query(*temp_min_max_avg).filter(Measurement.station == "USC00519281").all()
+    last_temps = session.query(Measurement.tobs).filter(Measurement.date >= '2016-08-23').filter(Measurement.date <= '2017-08-23').all()
     session.close()
     #convert list into normal list
-    all_temps = list(np.ravel(temp_results))
-    return jsonify(all_temps)
+    calc_temps = list(np.ravel(temp_results))
+    temps = list(np.ravel(last_temps))
+    return jsonify(calc_temps, temps)
+
+
+@app.route("/api/v1.0/date/start/<start>", methods=['GET'])
+def start(start):
+    """When given the start only, calculate TMIN, TAVG, and TMAX 
+    for all dates greater than and equal to the start date, or a 404 if no dates after"""
+    session = Session(engine)
+    #return jsonify({"error": f"Dates not found."}), 404
+    #This function called `calc_temps` will accept start date and end date in the format '%Y-%m-%d' 
+    # and return the minimum, average, and maximum temperatures for that range of dates
+    """TMIN, TAVG, and TMAX for a list of dates.
+    
+    Args:
+        start_date (string): A date string in the format %Y-%m-%d
+        end_date (string): A date string in the format %Y-%m-%d
+        
+    Returns:
+        TMIN, TAVE, and TMAX
+        """
+    
+    start_results = session.query(Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+        filter(func.strftime("%Y-%m-%d",Measurement.date >= start)).group_by(Measurement.date).all() 
+    session.close()
+
+    all_start_date = []
+    for date, min, avg, max in start_results:
+        start_date_dict = {}
+        start_date_dict["date"] = date
+        start_date_dict["min"] = min
+        start_date_dict["avg"] = avg
+        start_date_dict["max"] = max
+        all_start_date.append(start_date_dict)
+    return jsonify(all_start_date)
+
+
+@app.route("/api/v1.0/date/start/<start>/end/<end>",methods=['GET'])
+def date(start,end):
+    """When given the start only, calculate TMIN, TAVG, and TMAX 
+    for all dates greater than and equal to the start date, or a 404 if no dates after"""
+    session = Session(engine)
+
+    #This function called `calc_temps` will accept start date and end date in the format '%Y-%m-%d' 
+    # and return the minimum, average, and maximum temperatures for that range of dates
+    """TMIN, TAVG, and TMAX for a list of dates.
+    
+    Args:
+        start_date (string): A date string in the format %Y-%m-%d
+        end_date (string): A date string in the format %Y-%m-%d
+        
+    Returns:
+        TMIN, TAVE, and TMAX
+    """
+    start_end_results = session.query(Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+        filter(func.strftime("%Y-%m-%d",Measurement.date >= start)).filter(func.strftime("%Y-%m-%d",Measurement.date <= end)).group_by(Measurement.date).all() 
+    session.close()
+
+    all_start_end_date = []
+    for date, min, avg, max in start_end_results:
+        start_end_date_dict = {}
+        start_end_date_dict["date"] = date
+        start_end_date_dict["min"] = min
+        start_end_date_dict["avg"] = avg
+        start_end_date_dict["max"] = max
+        all_start_end_date.append(start_end_date_dict)
+    return jsonify(all_start_end_date)
 
 if __name__ == "__main__":
     app.run(debug=True)
