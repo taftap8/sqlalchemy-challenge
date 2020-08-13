@@ -29,8 +29,11 @@ def home():
     return (
         f"Welcome to the Climate App API: <br/>"
         f'Please see available routes:<br/>'
+        f'Precipitation route to view date and documented rainfall:<br/>'
         f'/api/v1.0/precipitation <br/>'
+        f'Station route to view list of documented stations:<br/>'
         f'/api/v1.0/stations <br/>'
+        f'Tobs route to view summary data for 2016-2017 year and raw data points:<br/>'
         f'/api/v1.0/tobs <br/><br/>'
         f"Search for a specific start date (start/YYYY-MM-DD) <br/>"
         f'/api/v1.0/date/start/<start> <br/>'
@@ -59,13 +62,14 @@ def percipitation():
 def stations():  #create session link from Python to the DB
     session = Session(engine)
     """Return Station data as json"""
-    station_results = session.query(Station.station).all()
+    station_results = session.query(Station.station,Station.name).all()
     session.close()
     #convert list into normal list
     all_stations = []
-    for station in station_results:
+    for station, name in station_results:
         station_dict = {}
-        station_dict["station name"] = station
+        station_dict["Station"] = station
+        station_dict["Details"] = name
         all_stations.append(station_dict)
     return jsonify(all_stations)
 
@@ -80,20 +84,33 @@ def tobs():
         func.avg(Measurement.tobs)}
 
     temp_results = session.query(*temp_min_max_avg).filter(Measurement.station == "USC00519281").all()
-    last_temps = session.query(Measurement.tobs).filter(Measurement.date >= '2016-08-23').filter(Measurement.date <= '2017-08-23').all()
+    last_temps = session.query(Measurement.date, Measurement.station, Measurement.tobs).filter(Measurement.date >= '2016-08-23').filter(Measurement.date <= '2017-08-23').all()
     session.close()
     #convert list into normal list
-    calc_temps = list(np.ravel(temp_results))
-    temps = list(np.ravel(last_temps))
+    calc_temps = []
+    for station, min, max, avg in temp_results:
+        calc_dict ={}
+        calc_dict["Station"] = station
+        calc_dict["Min"] = min
+        calc_dict["Max"] = max
+        calc_dict["Average"] = avg
+        calc_temps.append(calc_dict)
+
+    temps = []
+    for date, station, tobs in last_temps:
+        temp_dict = {}
+        temp_dict["Date"] = date
+        temp_dict["Station"] = station
+        temp_dict["Rainfall"] = tobs
+        temps.append(temp_dict)
     return jsonify(calc_temps, temps)
 
 
 @app.route("/api/v1.0/date/start/<start>", methods=['GET'])
 def start(start):
     """When given the start only, calculate TMIN, TAVG, and TMAX 
-    for all dates greater than and equal to the start date, or a 404 if no dates after"""
+    for all dates greater than and equal to the start date"""
     session = Session(engine)
-    #return jsonify({"error": f"Dates not found."}), 404
     #This function called `calc_temps` will accept start date and end date in the format '%Y-%m-%d' 
     # and return the minimum, average, and maximum temperatures for that range of dates
     """TMIN, TAVG, and TMAX for a list of dates.
@@ -124,7 +141,7 @@ def start(start):
 @app.route("/api/v1.0/date/start/<start>/end/<end>",methods=['GET'])
 def date(start,end):
     """When given the start only, calculate TMIN, TAVG, and TMAX 
-    for all dates greater than and equal to the start date, or a 404 if no dates after"""
+    for all dates greater than and equal to the start date"""
     session = Session(engine)
 
     #This function called `calc_temps` will accept start date and end date in the format '%Y-%m-%d' 
